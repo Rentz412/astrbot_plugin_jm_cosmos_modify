@@ -566,7 +566,7 @@ class ComicDownloader:
 
             # 4. 执行7z压缩
             # 使用 LZMA2 算法，preset=9 (最高压缩)
-            filters = [{"id": py7zr.FILTER_LZMA2, "preset": 5}]
+            filters = [{"id": py7zr.FILTER_LZMA2, "preset": 0}]
             
             with py7zr.SevenZipFile(archive_path, 'w', password=password, filters=filters) as archive:
                 # 将漫画文件夹内的所有内容压缩，并以文件夹名作为压缩包内的根目录名
