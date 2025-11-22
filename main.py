@@ -204,39 +204,32 @@ class ResourceManager:
         }
 
     def find_comic_folder(self, comic_id: str) -> str:
-        """查找漫画文件夹，支持多种命名方式"""
+        """查找漫画文件夹，现在强制优先使用 {comic_id} 命名规则，并兼容旧版"""
         logger.info(f"开始查找漫画ID {comic_id} 的文件夹")
-        id_path = os.path.join(self.downloads_dir, str(comic_id))
+        id_str = str(comic_id)
+        
+        # 1. 检查理想路径 (新的命名规则: 纯ID)
+        id_path = os.path.join(self.downloads_dir, id_str)
         if os.path.exists(id_path):
             return id_path
 
+        # 2. 查找旧的或更复杂的命名规则
         if os.path.exists(self.downloads_dir):
-            exact_matches = []
-            partial_matches = []
-
             for item in os.listdir(self.downloads_dir):
                 item_path = os.path.join(self.downloads_dir, item)
                 if not os.path.isdir(item_path):
                     continue
 
+                # 匹配：ID_Title, [ID]Title, Title[ID], 或包含 ID 的模糊匹配
                 if (
-                    item.startswith(str(comic_id) + "_")
-                    or item.endswith("_" + str(comic_id))
-                    or item.startswith("[" + str(comic_id) + "]")
-                    or item == str(comic_id)
+                    item == id_str
+                    or item.startswith(id_str + "_")
+                    or f"[{id_str}]" in item
+                    or (id_str in item and re.search(r"\b" + re.escape(id_str) + r"\b", item)) # 词边界匹配
                 ):
-                    exact_matches.append(item_path)
-                elif str(comic_id) in item:
-                    import re
-                    pattern = r"\b" + re.escape(str(comic_id)) + r"\b"
-                    if re.search(pattern, item):
-                        partial_matches.append(item_path)
+                    return item_path
 
-            if exact_matches:
-                return exact_matches[0]
-            elif partial_matches:
-                return partial_matches[0]
-
+        # 3. 如果都没找到，返回预期的新路径 (下载时会创建)
         return id_path
 
     def get_comic_folder(self, comic_id: str) -> str:
@@ -358,7 +351,10 @@ class JMClientFactory:
                     "photo": self.config.max_threads,
                 },
             },
-            "dir_rule": {"base_dir": self.resource_manager.downloads_dir},
+            "dir_rule": {
+                "base_dir": self.resource_manager.downloads_dir,
+                "rule": "{id}", # 强制文件夹名为 comic_id，确保 post-processing 可以找到
+            },
             # 移除 img2pdf 插件配置，我们手动处理压缩
             "plugins": {},
         }
@@ -513,6 +509,8 @@ class ComicDownloader:
                             backup_option = jmcomic.JmOption.default()
                             backup_option.client.domain = [backup_domain]
                             backup_option.dir_rule.base_dir = option.dir_rule.base_dir
+                            backup_option.dir_rule.rule = "{id}" # 保持规则一致
+                            
                             if self.config.proxy:
                                 backup_option.client.postman.meta_data = {
                                     "proxies": {"https": self.config.proxy}
@@ -547,8 +545,8 @@ class ComicDownloader:
     def _compress_and_cleanup(self, album_id: str):
         """压缩为7z并加密，然后删除原文件"""
         try:
-            # 1. 找到下载的文件夹
-            comic_folder = self.resource_manager.find_comic_folder(album_id)
+            # 1. 找到下载的文件夹 (因为我们在 option 中设置了 rule="{id}"，所以这里可以直接找到)
+            comic_folder = self.resource_manager.get_comic_folder(album_id)
             if not os.path.exists(comic_folder):
                 raise FileNotFoundError(f"未找到漫画目录: {comic_folder}")
 
@@ -568,11 +566,10 @@ class ComicDownloader:
 
             # 4. 执行7z压缩
             # 使用 LZMA2 算法，preset=9 (最高压缩)
-            filters = [{"id": py7zr.FILTER_LZMA2, "preset": 9}]
+            filters = [{"id": py7zr.FILTER_LZMA2, "preset": 5}]
             
             with py7zr.SevenZipFile(archive_path, 'w', password=password, filters=filters) as archive:
-                # 将文件夹内的内容写入压缩包，保持文件夹名称作为根目录
-                # 或者直接将文件夹压进去
+                # 将漫画文件夹内的所有内容压缩，并以文件夹名作为压缩包内的根目录名
                 archive.writeall(comic_folder, arcname=os.path.basename(comic_folder))
 
             logger.info(f"压缩完成: {archive_path}")
@@ -760,7 +757,7 @@ class JMCosmosPlugin(Star):
 
                 # 尝试发送
                 if event.get_platform_name() == "aiocqhttp" and event.get_group_id():
-                    # ...此处省略具体的 aiocqhttp 适配代码，与原版保持一致，仅更改文件变量...
+                    # 适配 aiocqhttp 的发送方式 (保持原逻辑)
                      yield event.chain_result([File(name=file_name, file=file_path)])
                 else:
                      yield event.chain_result([File(name=file_name, file=file_path)])
@@ -860,7 +857,7 @@ class JMCosmosPlugin(Star):
         elif action == "info":
             domain_list_str = ", ".join(self.config.domain_list)
             proxy_str = self.config.proxy if self.config.proxy else "未设置"
-            pwd_str = self.config.custom_password if self.config.custom_password else "默认(jm{id})"
+            pwd_str = self.config.custom_password if self.config.custom_password else "默认(jm+ID)"
             
             info_message = (
                 f"当前配置信息:\n"
@@ -1039,10 +1036,6 @@ class JMCosmosPlugin(Star):
                 yield event.plain_result("获取推荐失败")
         except Exception as e:
             yield event.plain_result(f"推荐失败: {e}")
-
-    @filter.command("jmupdate")
-    async def check_update(self, event: AstrMessageEvent):
-        yield event.plain_result("JM-Cosmos 7z专用版 v1.2.0")
 
     @filter.command("jmcleanup")
     async def cleanup_storage(self, event: AstrMessageEvent):
