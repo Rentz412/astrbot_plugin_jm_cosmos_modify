@@ -1,5 +1,6 @@
-name: jmcomic_download
-version: 1.0.0
-author: GEMILUXVII
-description: 下载JM漫画并转为PDF，支持预览搜索测试和更新可用域名，新增三层下载回退机制和优化作者搜索
-repo: https://github.com/Rentz/astrbot_plugin_jm_cosmos_modify
+name: jmcomic_download # 这是你的插件的唯一识别名。
+display_name: jm漫画下载器
+desc: 下载JM漫画并转为PDF，支持预览搜索测试和更新可用域名，新增三层下载回退机制和优化作者搜索  # 插件简短描述
+version: v1.0 # 插件版本号。格式：v1.1.1 或者 v1.1
+author: Rentz # 作者
+repo: https://github.com/Rentz/astrbot_plugin_jm_cosmos_modify # 插件的仓库地址
