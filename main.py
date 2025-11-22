@@ -311,20 +311,18 @@ class PostProcessor:
             self._cleanup_downloaded_files(comic_id, "", comic_folder)
             return False, "", "PDF文件不存在，已清理图片文件夹。"
 
-        # 1. 准备目标ZIP文件路径
+        # 1. 准备目标 ZIP 文件路径
         zip_file_name = f"{comic_id}.zip"
         # 使用临时目录进行操作
         temp_zip_dir = os.path.join(self.resource_manager.temp_dir, "zips")
         os.makedirs(temp_zip_dir, exist_ok=True)
         temp_zip_path = os.path.join(temp_zip_dir, zip_file_name)
 
-        # 2. 压缩和加密PDF
+        # 2. 压缩和加密 PDF
         password = self.config.zip_password
         pwd_bytes = password.encode("utf8") if password else None
         
         # 压缩率为0 (zipfile.ZIP_STORED)
-        # 注意: Python 标准库 zipfile 在 ZIP_STORED 模式下设置密码可能无法加密
-        # 为了满足 “压缩率为0” 和 “自定义密码”，我们使用 ZIP_STORED 并尝试设置密码。
         compress_type = zipfile.ZIP_STORED 
         
         try:
@@ -410,13 +408,14 @@ class JMCosmosPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
         self.plugin_name = "jm_cosmos"
-        self.config_path = os.path.join(self.context.plugin_data_dir, "config.json")
+        # 修正：将 self.context.plugin_data_dir 更改为 self.context.data_dir
+        self.config_path = os.path.join(self.context.data_dir, "config.json") 
         self.config = CosmosConfig.load_from_file(self.config_path)
         
         self.resource_manager = ResourceManager(self.plugin_name)
         self.downloader = JmComicDownloader(self.config, self.resource_manager)
         
-        # 实例化 PostProcessor <<< 新增
+        # 实例化 PostProcessor
         self.post_processor = PostProcessor(self.config, self.resource_manager)
 
         # 初始化 jmcomic 配置
