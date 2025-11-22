@@ -457,16 +457,16 @@ class ComicDownloader:
             return False, str(e), []
 
 @register(
-    "jm_cosmos",
-    "GEMILUXVII",
-    "全能型JM漫画下载与管理工具",
-    "1.2.0",
-    "https://github.com/GEMILUXVII/astrbot_plugin_jm_cosmos",
+    "jmcomic_download",
+    "Rentz",
+    "全能型JM漫画下载与管理工具(修改自用版)",
+    "1.0",
+    "https://github.com/Rentz/astrbot_plugin_jm_cosmos_modify",
 )
 class JMCosmosPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
-        self.plugin_name = "jm_cosmos"
+        self.plugin_name = "jmcomic_download"
         self.base_path = os.path.realpath(os.path.dirname(__file__))
         self.resource_manager = ResourceManager(self.plugin_name)
         self.resource_manager.clear_cover_cache()
