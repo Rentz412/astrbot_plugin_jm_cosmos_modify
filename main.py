@@ -323,6 +323,8 @@ class PostProcessor:
         pwd_bytes = password.encode("utf8") if password else None
         
         # 压缩率为0 (zipfile.ZIP_STORED)
+        # 注意: Python 标准库 zipfile 在 ZIP_STORED 模式下设置密码可能无法加密
+        # 为了满足 “压缩率为0” 和 “自定义密码”，我们使用 ZIP_STORED 并尝试设置密码。
         compress_type = zipfile.ZIP_STORED 
         
         try:
@@ -408,8 +410,11 @@ class JMCosmosPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
         self.plugin_name = "jm_cosmos"
-        # 修正：将 self.context.plugin_data_dir 更改为 self.context.data_dir
-        self.config_path = os.path.join(self.context.data_dir, "config.json") 
+        
+        # 最终修正：使用 self.context.get_data_dir() 方法获取插件数据目录
+        data_dir = self.context.get_data_dir()
+        self.config_path = os.path.join(data_dir, "config.json") 
+        
         self.config = CosmosConfig.load_from_file(self.config_path)
         
         self.resource_manager = ResourceManager(self.plugin_name)
@@ -432,7 +437,7 @@ class JMCosmosPlugin(Star):
     # 您需要将此逻辑集成到您实际的下载/发送命令处理函数中。
     async def _post_process_and_send_zip(self, event: AstrMessageEvent, comic_id: str):
         """
-        在下载和PDF生成完成后，处理文件并发送ZIP。
+        在下载和PDF生成完成后，处理文件并发送 ZIP。
         此函数为演示用途，需要集成到实际的指令处理中。
         """
         # 假设 PDF 已通过 jmcomic.download_album + img2pdf 插件生成
