@@ -12,7 +12,6 @@ import py7zr
 import shutil
 import time
 import concurrent.futures
-from datetime import datetime
 from typing import Dict, List, Set, Tuple, Optional, Any
 from dataclasses import dataclass
 from threading import Lock
@@ -59,7 +58,7 @@ class CosmosConfig:
         )
 
 # ===========================
-# 资源管理器
+# 资源管理器 (已还原原始逻辑)
 # ===========================
 
 class ResourceManager:
@@ -82,34 +81,62 @@ class ResourceManager:
     def get_cover_path(self, comic_id: str) -> str:
         return os.path.join(self.covers_dir, f"{comic_id}.jpg")
 
-    def find_comic_folder(self, comic_id: str) -> Optional[str]:
+    def find_comic_folder(self, comic_id: str) -> str:
         """
-        查找漫画文件夹。
-        策略1: 直接查找 ID 命名的文件夹 (配置强制规则后应命中此项)
-        策略2: 遍历目录查找包含 ID 的文件夹 (兜底)
+        【已还原】原始 main.py 中的智能查找逻辑
+        查找漫画文件夹，支持多种命名方式
         """
-        # 1. 尝试标准路径: downloads/12345
-        target_path = os.path.join(self.downloads_dir, str(comic_id))
-        if os.path.exists(target_path) and os.path.isdir(target_path):
-            return target_path
+        logger.info(f"开始查找漫画ID {comic_id} 的文件夹")
 
-        # 2. 兜底查找: 扫描 downloads 下所有文件夹
-        # 防止配置未生效导致文件夹名为 "12345 标题" 或 "[12345]标题"
-        try:
-            if os.path.exists(self.downloads_dir):
-                for name in os.listdir(self.downloads_dir):
-                    full_path = os.path.join(self.downloads_dir, name)
-                    if os.path.isdir(full_path):
-                        # 检查文件夹名是否包含ID
-                        if str(comic_id) in name:
-                            return full_path
-        except Exception as e:
-            logger.error(f"查找文件夹出错: {e}")
-            
-        return None
+        # 1. 尝试直接匹配ID
+        id_path = os.path.join(self.downloads_dir, str(comic_id))
+        if os.path.exists(id_path):
+            logger.info(f"找到直接匹配的目录: {id_path}")
+            return id_path
+
+        # 2. 尝试查找以漫画标题命名的目录
+        if os.path.exists(self.downloads_dir):
+            exact_matches = []
+            partial_matches = []
+
+            try:
+                for item in os.listdir(self.downloads_dir):
+                    item_path = os.path.join(self.downloads_dir, item)
+                    if not os.path.isdir(item_path):
+                        continue
+
+                    # 精确匹配逻辑：目录名以ID开头或结尾，或者格式为 [ID]...
+                    if (
+                        item.startswith(str(comic_id) + "_")
+                        or item.endswith("_" + str(comic_id))
+                        or item.startswith("[" + str(comic_id) + "]")
+                        or item == str(comic_id)
+                    ):
+                        exact_matches.append(item_path)
+                        logger.info(f"找到精确匹配的漫画目录: {item_path}")
+                    # 部分匹配逻辑：目录名包含ID且是独立数字
+                    elif str(comic_id) in item:
+                        pattern = r"\b" + re.escape(str(comic_id)) + r"\b"
+                        if re.search(pattern, item):
+                            partial_matches.append(item_path)
+                            logger.info(f"找到部分匹配的漫画目录: {item_path}")
+            except Exception as e:
+                logger.error(f"遍历目录出错: {e}")
+
+            # 优先返回精确匹配
+            if exact_matches:
+                logger.info(f"找到精确匹配，返回: {exact_matches[0]}")
+                return exact_matches[0]
+            elif partial_matches:
+                logger.info(f"找到部分匹配，返回: {partial_matches[0]}")
+                return partial_matches[0]
+
+        # 默认返回downloads目录下的ID路径 (即使不存在)
+        default_path = os.path.join(self.downloads_dir, str(comic_id))
+        logger.info(f"未找到现有目录，返回默认路径: {default_path}")
+        return default_path
 
     def cleanup_old_files(self, days=30):
-        """简单清理过期文件"""
         cutoff = time.time() - (days * 86400)
         for folder in [self.archives_dir, self.covers_dir]:
             if not os.path.exists(folder): continue
@@ -119,6 +146,13 @@ class ResourceManager:
                     if os.path.getmtime(fp) < cutoff:
                         os.remove(fp)
                 except: pass
+
+    def clear_cover_cache(self):
+        if os.path.exists(self.covers_dir):
+            try:
+                for f in os.listdir(self.covers_dir):
+                    os.remove(os.path.join(self.covers_dir, f))
+            except: pass
 
 # ===========================
 # 压缩工具
@@ -132,6 +166,7 @@ def compress_folder_to_7z(input_folder: str, output_7z: str, password: str, arcn
         password=password,
         filters=[{"id": py7zr.FILTER_LZMA2, "preset": 9}] 
     ) as archive:
+        # 将整个文件夹写入压缩包
         archive.writeall(input_folder, arcname=arcname)
 
 # ===========================
@@ -148,7 +183,7 @@ class JMClientFactory:
         option_dict = {
             "client": {
                 "domain": self.config.domain_list,
-                "retry_times": 5,
+                "retry_times": 3,
                 "postman": {
                     "meta_data": {
                         "proxies": {"https": self.config.proxy} if self.config.proxy else None,
@@ -166,9 +201,9 @@ class JMClientFactory:
             },
             "dir_rule": {
                 "base_dir": self.rm.downloads_dir,
-                "rule": "Bd_Id"  # <--- 关键修复：强制文件夹名为 ID，避免使用标题
+                # 【已还原】移除 Bd_Id 规则，恢复 jmcomic 默认行为（使用标题命名）
             },
-            "plugins": {} # 禁用所有插件（包括img2pdf）
+            "plugins": {} 
         }
         return jmcomic.create_option_by_str(yaml.safe_dump(option_dict))
 
@@ -195,10 +230,10 @@ class ComicDownloader:
 
         try:
             loop = asyncio.get_event_loop()
-            # 在线程池中运行下载
             await loop.run_in_executor(self.executor, self._do_download, comic_id)
             return True, "下载完成"
         except Exception as e:
+            # 这里的异常通常是网络连不通，和文件夹无关
             logger.error(f"下载失败 {comic_id}: {e}")
             return False, str(e)
         finally:
@@ -206,24 +241,22 @@ class ComicDownloader:
                 self.downloading.discard(comic_id)
 
     def _do_download(self, comic_id: str):
-        # 使用配置好的 option 下载
-        # 这里的 option 包含了 dir_rule: Bd_Id，所以会下载到 downloads/12345
         jmcomic.download_album(comic_id, self.factory.option)
 
 # ===========================
 # 插件主类
 # ===========================
 
-@register("jm_cosmos", "GEMILUXVII", "JM漫画下载(7z加密版)", "1.3.0")
+@register("jm_cosmos", "GEMILUXVII", "JM漫画下载(7z加密版)", "1.4.0")
 class JMCosmosPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
         self.plugin_name = "jm_cosmos"
         self.rm = ResourceManager(self.plugin_name)
+        self.rm.clear_cover_cache()
         
         # 加载配置
         cfg_data = config or {}
-        # 尝试读取本地配置如果传入为空
         if not config:
             cfg_path = os.path.join(context.get_config().get("data_dir", "data"), "config", f"astrbot_plugin_{self.plugin_name}_config.json")
             if os.path.exists(cfg_path):
@@ -255,40 +288,43 @@ class JMCosmosPlugin(Star):
         
         # 确定密码
         pwd = self.config.custom_password.strip()
-        is_custom = bool(pwd)
         if not pwd:
             pwd = f"jm{comic_id}"
 
         # 1. 检查是否已有压缩包
         if os.path.exists(archive_path):
-            yield event.plain_result(f"检测到现有压缩包，正在发送...\n🔑 解压密码: {pwd}")
+            yield event.plain_result(f"检测到现有压缩包，直接发送...\n🔑 解压密码: {pwd}")
             yield event.chain_result([File(name=f"{comic_id}.7z", file=archive_path)])
             return
 
-        yield event.plain_result(f"开始下载 {comic_id} ...")
+        yield event.plain_result(f"开始下载 {comic_id} (文件夹名称将包含标题)...")
 
         # 2. 执行下载
+        # 注意：如果网络不通，这里依然会报错 "请求重试全部失败"
         success, msg = await self.downloader.download_comic(comic_id)
         if not success:
-            yield event.plain_result(f"下载失败: {msg}")
+            yield event.plain_result(f"❌ 下载失败: {msg}\n(请检查域名或代理配置)")
             return
 
-        # 3. 查找下载的文件夹
+        # 3. 使用【还原的智能逻辑】查找下载文件夹
         comic_folder = self.rm.find_comic_folder(comic_id)
-        if not comic_folder:
-            yield event.plain_result("❌ 下载看似成功，但未找到文件夹。\n原因可能是文件名包含特殊字符或配置未生效。")
+        
+        # 再次确认文件夹是否存在 (find_comic_folder 兜底会返回不存在的默认路径)
+        if not os.path.exists(comic_folder) or not os.path.isdir(comic_folder):
+            # 如果智能查找都找不到，说明下载真的没成功保存
+            yield event.plain_result(f"❌ 下载流程结束但未找到漫画文件夹。\n(可能原因：网络下载中断 或 目录权限不足)")
             return
 
         # 4. 压缩并删除
         try:
-            yield event.plain_result("下载完成，正在进行极限压缩(7z)与加密...")
+            yield event.plain_result(f"✅ 已定位文件夹: {os.path.basename(comic_folder)}\n正在进行7z极限压缩与加密...")
             
             await asyncio.to_thread(
                 compress_folder_to_7z,
                 input_folder=comic_folder,
                 output_7z=archive_path,
                 password=pwd,
-                arcname=comic_id
+                arcname=os.path.basename(comic_folder) # 压缩包内保留原始文件夹名
             )
 
             # 删除原图目录
@@ -306,7 +342,7 @@ class JMCosmosPlugin(Star):
         """配置管理"""
         args = event.message_str.split()
         if len(args) < 2:
-            yield event.plain_result("/jmconfig password [密码] | proxy [url] | noproxy")
+            yield event.plain_result("用法: /jmconfig password [密码] | proxy [url] | noproxy")
             return
         
         op = args[1]
@@ -331,11 +367,9 @@ class JMCosmosPlugin(Star):
             yield event.plain_result("代理已清除")
 
         if save_needed:
-            # 保存到文件
             cfg_path = os.path.join(self.context.get_config().get("data_dir", "data"), "config", f"astrbot_plugin_{self.plugin_name}_config.json")
             os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
             with open(cfg_path, "w", encoding="utf-8-sig") as f:
-                # 构建要保存的字典，映射回 config 的字段
                 d = {
                     "domain_list": self.config.domain_list,
                     "proxy": self.config.proxy,
