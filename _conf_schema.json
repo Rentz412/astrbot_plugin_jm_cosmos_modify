@@ -18,6 +18,12 @@
         "hint": "登录后的Cookie值，用于获取更多内容",
         "default": ""
     },
+    "custom_password": {
+        "description": "自定义压缩包密码",
+        "type": "string",
+        "hint": "设置7z压缩包的统一密码。如果不填（留空），默认密码为 jm+漫画ID（例如 jm12345）。填入后将强制使用该密码。",
+        "default": ""
+    },
     "max_threads": {
         "description": "最大下载线程数",
         "type": "int",
@@ -36,4 +42,4 @@
         "hint": "启用调试模式后会保存更多日志信息，帮助排查问题",
         "default": false
     }
-} 
+}
