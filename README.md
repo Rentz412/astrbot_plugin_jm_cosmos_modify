@@ -1,5 +1,13 @@
 # <div align="center">🪐 JM-Cosmos</div>
 
+## ◎ 修改内容
+
+- 去除生成PDF，转而使用带密码加密的7z压缩
+- 压缩完成后自动清除下载的图片
+- 强制7z使用密码加密，默认密码`jm{comic_id}`
+- 可自定义加密密码
+- [ToDo]可选插件仅私聊可用
+
 <div align="center"><em>全能型 JM 漫画下载与管理工具</em></div>
 
 <br>
