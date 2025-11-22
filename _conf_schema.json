@@ -30,16 +30,16 @@
         "hint": "是否在漫画信息和搜索结果中显示封面图片",
         "default": true
     },
-    "custom_password": {
-        "description": "自定义压缩密码",
-        "type": "string",
-        "hint": "7z压缩包密码。留空则使用默认密码：jm{comic_id}。若填写，所有下载均使用此密码。",
-        "default": ""
-    },
     "debug_mode": {
         "description": "调试模式",
         "type": "bool",
-        "hint": "启用调试模式后会保存更多日志信息，帮助排查问题",
+        "hint": "是否开启调试模式，会输出更详细的日志信息",
         "default": false
+    },
+    "zip_password": {
+        "description": "压缩包密码",
+        "type": "string",
+        "hint": "用于加密PDF压缩包的密码。留空则不加密。",
+        "default": ""
     }
 }
